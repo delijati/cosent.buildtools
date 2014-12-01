@@ -10,6 +10,8 @@ dummypath = "%s/src/cosent.dummypackage" % os.getcwd()
 
 
 class TestGit(unittest.TestCase):
+    stash = False
+    stashed = False
 
     def setUp(self):
         # reset src/cosent.dummypackage
@@ -20,16 +22,17 @@ class TestGit(unittest.TestCase):
                                stdout=subprocess.PIPE)
         stdout, stderr = cmd.communicate()
         # stash cosent.buildtools
-        cmd = subprocess.Popen("git stash",
-                               shell=True,
-                               cwd=os.getcwd(),
-                               stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE)
-        stdout, stderr = cmd.communicate()
-        if 'HEAD is now at' in stdout:
-            self.stashed = True
-        else:
-            self.stashed = False
+        if self.stash:
+            cmd = subprocess.Popen("git stash",
+                                   shell=True,
+                                   cwd=os.getcwd(),
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE)
+            stdout, stderr = cmd.communicate()
+            if 'HEAD is now at' in stdout:
+                self.stashed = True
+            else:
+                self.stashed = False
 
     def tearDown(self):
         if not self.stashed:
@@ -53,7 +56,7 @@ class TestGit(unittest.TestCase):
 
     def test_all_clean_true(self):
         self.assertTrue(
-            bt.is_all_clean(),
+            bt.is_all_clean(dummypath),
             "\n%s:\n%s\n\n%s:\n%s" % (
                 dummypath, bt.git_status(dummypath),
                 bt.BASEDIR, bt.git_status(bt.BASEDIR)))

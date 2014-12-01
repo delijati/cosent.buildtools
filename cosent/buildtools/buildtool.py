@@ -1,12 +1,12 @@
 from optparse import OptionParser
-from ConfigParser import ConfigParser
 import sys
 import subprocess
 import os
 
 from jarn.mkrelease.mkrelease import main as jarn_mkrelease
 
-import bumpversion as bv
+import cosent.buildtools.bumpversion as bv
+from cosent.buildtools.compat import s, ConfigParser
 
 BASEDIR = os.getcwd()
 
@@ -47,26 +47,29 @@ class VersionParser(object):
 
 
 def git_status(path):
-    cmd = subprocess.Popen("git status",
+    cmd = subprocess.Popen("git status -s",
                            shell=True,
                            cwd=path,
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
     return stdout.strip()
 
 
 def is_git_clean(path):
     status = git_status(path)
-    if 'nothing to commit' in status:
+    if not status:
         return True
     else:
         return False
 
 
-def is_all_clean():
+def is_all_clean(basedir=None):
+    if not basedir:
+        basedir = BASEDIR
     clean = True
-    if not is_git_clean(BASEDIR):
+    if not is_git_clean(basedir):
         clean = False
     for (pkg, path) in devel_eggs().items():
         if not is_git_clean(path):
@@ -81,6 +84,7 @@ def version_is_tagged(path):
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
     tags = stdout.strip().split('\n')
     version = bv.get_version(path, True)
     return version in tags
@@ -93,6 +97,7 @@ def tagged_version_is_head(path):
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
     tags = stdout.strip().split('\n')
     version = bv.pkg_version(path)
     return version in tags
@@ -114,6 +119,7 @@ def git_tag(path, tag, noact=False):
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
 
 
 def git_commit(path, tag, noact=False):
@@ -127,6 +133,7 @@ def git_commit(path, tag, noact=False):
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
 
 
 def git_push(path, noact=False):
@@ -140,6 +147,7 @@ def git_push(path, noact=False):
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
 
 
 def devel_eggs():
@@ -148,6 +156,7 @@ def devel_eggs():
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
     packages = stdout.strip().split('\n')
     pkginfo = {}
     for pkg in packages:
@@ -156,6 +165,9 @@ def devel_eggs():
                                stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE)
         stdout, stderr = cmd.communicate()
+        stdout = s(stdout)
+        # TODO bug in mr.developer for same starting of packegename
+        stdout = stdout.split('\n')[0]
         pkgpath = stdout.strip()
         pkginfo[pkg] = pkgpath
     return pkginfo
@@ -287,7 +299,7 @@ def buildtool_dist(versionsfile,
 
 
 def git_all(args, noact=False):
-    print "Inspecting devel eggs, hang on..."
+    print("Inspecting devel eggs, hang on...")
     for (pkg, path) in devel_eggs().items():
         print("\n--- %s ---" % pkg)
         git_cmd(path, args, noact)
@@ -306,6 +318,7 @@ def git_cmd(path, args, noact=False):
                            stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE)
     stdout, stderr = cmd.communicate()
+    stdout = s(stdout)
     print(stdout)
 
 
@@ -383,7 +396,7 @@ def main(defaults={}):
                   % (sys.argv[0], sys.argv[0]))
 
     else:
-        print "No such command: %s" % cmd
+        print("No such command: %s" % cmd)
         print(usage)
         return
 

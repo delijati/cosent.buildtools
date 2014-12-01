@@ -1,6 +1,7 @@
 *~
 *py?
 *.egg-info
+*.swp
 dist/
 .installed.cfg
 .mr.developer.cfg
