@@ -6,16 +6,16 @@ buildout: bin/buildout
 test:
 	@bin/test --with-coverage --cover-package=cosent.buildtools --cover-erase
 
-bin/buildout: bin/python2.7
-	@wget http://downloads.buildout.org/1/bootstrap.py
-	@bin/python2.7 bootstrap.py
+bin/buildout: bin/python
+	@wget http://downloads.buildout.org/2/bootstrap.py
+	@bin/python bootstrap.py
 	@rm bootstrap.*
 
-bin/python2.7:
-	@virtualenv --clear -p python2.7 --distribute .
+bin/python:
+	@virtualenv --clear -p python .
 
 travis:
-	wget http://downloads.buildout.org/1/bootstrap.py
+	wget http://downloads.buildout.org/2/bootstrap.py
 	python bootstrap.py
 	rm bootstrap.*
 	bin/buildout
