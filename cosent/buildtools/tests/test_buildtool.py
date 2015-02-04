@@ -2,6 +2,7 @@ import unittest
 import os
 import subprocess
 import tempfile
+import shutil
 
 from cosent.buildtools import buildtool as bt
 from cosent.buildtools import bumpversion as bv
@@ -43,6 +44,53 @@ class TestGit(unittest.TestCase):
                                stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE)
         stdout, stderr = cmd.communicate()
+
+    def _create_git_repo(self, commit=False):
+        self.saved_path = os.getcwd()
+        try:
+            git = "git"
+            repo = tempfile.mkdtemp()
+            os.chdir(repo)
+            # init repo
+            subprocess.call([git, 'init', '.'])
+            # create file
+            with open(os.path.join(repo, 'a.txt'), 'w') as file:
+                file.write('maui 123\n')
+            # add file
+            subprocess.call([git, 'add', 'a.txt'])
+            if commit:
+                subprocess.call([git, 'commit', '-m', 'file added'])
+        finally:
+            os.chdir(self.saved_path)
+        return repo
+
+    def test_git_commit(self):
+        try:
+            repo = self._create_git_repo()
+            self.assertEqual(bt.git_status(repo), "A  a.txt")
+            bt.git_commit(repo, "1.0")
+            self.assertEqual(bt.git_status(repo), "")
+        finally:
+            shutil.rmtree(repo)
+
+    def test_git_tag(self):
+        try:
+            repo = self._create_git_repo(commit=True)
+            cmd = subprocess.Popen(["git", "tag"],
+                                   cwd=repo,
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE)
+            stdout, stderr = cmd.communicate()
+            self.assertEqual(stdout, b"")
+            bt.git_tag(repo, "1.0")
+            cmd = subprocess.Popen(["git", "tag"],
+                                   cwd=repo,
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE)
+            stdout, stderr = cmd.communicate()
+            self.assertEqual(stdout, b"1.0\n")
+        finally:
+            shutil.rmtree(repo)
 
     def test_git_clean_true(self):
         self.assertTrue(bt.is_git_clean(dummypath),
@@ -89,6 +137,11 @@ class TestDevelEggs(unittest.TestCase):
     def test_devel_eggs(self):
         pkginfo = {'cosent.dummypackage': dummypath}
         self.assertEqual(bt.devel_eggs(),
+                         pkginfo)
+
+    def test_devel_eggs_exclude(self):
+        pkginfo = {}
+        self.assertEqual(bt.devel_eggs(excludes=["cosent.dummypackage"]),
                          pkginfo)
 
 

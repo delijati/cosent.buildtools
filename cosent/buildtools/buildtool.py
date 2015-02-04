@@ -65,13 +65,13 @@ def is_git_clean(path):
         return False
 
 
-def is_all_clean(basedir=None):
+def is_all_clean(basedir=None, excludes=[]):
     if not basedir:
         basedir = BASEDIR
     clean = True
     if not is_git_clean(basedir):
         clean = False
-    for (pkg, path) in devel_eggs().items():
+    for (pkg, path) in devel_eggs(excludes).items():
         if not is_git_clean(path):
             clean = False
     return clean
@@ -150,7 +150,7 @@ def git_push(path, noact=False):
     stdout = s(stdout)
 
 
-def devel_eggs():
+def devel_eggs(excludes=[]):
     cmd = subprocess.Popen("bin/develop ls -c",
                            shell=True,
                            stdin=subprocess.PIPE,
@@ -158,6 +158,7 @@ def devel_eggs():
     stdout, stderr = cmd.communicate()
     stdout = s(stdout)
     packages = stdout.strip().split('\n')
+    packages = set(packages) - set(excludes)
     pkginfo = {}
     for pkg in packages:
         cmd = subprocess.Popen("bin/develop info -p %s" % pkg,
@@ -189,22 +190,23 @@ def mkrelease(path, dist, noact=False):
         sys.exit(exit_code)
 
 
-def buildtool_status():
+def buildtool_status(excludes):
     print(BASEDIR)
     print(git_status(BASEDIR))
-    for (pkg, path) in devel_eggs().items():
+    for (pkg, path) in devel_eggs(excludes).items():
         print('\n' + path)
         print(git_status(path))
 
 
-def buildtool_cook(final=True, noact=False, skipchecks=False, force=False):
-    if not skipchecks and not is_all_clean():
+def buildtool_cook(final=True, noact=False, skipchecks=False, force=False,
+                   excludes=[]):
+    if not skipchecks and not is_all_clean(excludes):
         print("Buildout is not clean, aborting!\n"
               "================================\n")
-        return buildtool_status()
+        return buildtool_status(excludes)
 
     # commit, and tag egg versions
-    for (pkg, path) in devel_eggs().items():
+    for (pkg, path) in devel_eggs(excludes).items():
         if should_cook(path, final, force):
             new_version = bv.bump_pkg(path, final, noact)
             git_commit(path, new_version, noact)
@@ -237,7 +239,8 @@ def buildtool_dist(versionsfile,
                    final=True,
                    noact=False,
                    skipchecks=False,
-                   force=False):
+                   force=False,
+                   excludes=[]):
     assert versionsfile
     assert distlocation
     if not buildname:
@@ -246,13 +249,13 @@ def buildtool_dist(versionsfile,
     if not skipchecks and not is_all_clean():
         print("Buildout is not clean, aborting!\n"
               "================================\n")
-        return buildtool_status()
+        return buildtool_status(excludes)
 
     vp = VersionParser(versionsfile)
 
     # release changed eggs
     changed = []
-    for (pkg, path) in devel_eggs().items():
+    for (pkg, path) in devel_eggs(excludes).items():
         print("\n--- %s ---" % pkg)
         oldversion = vp.get_version(pkg)
         newversion = bv.pkg_version(path)
@@ -279,7 +282,7 @@ def buildtool_dist(versionsfile,
     release_tag = "%s=%s" % (buildname, buildout_version),
 
     # release, and tag buildout version on all eggs
-    for (pkg, path) in devel_eggs().items():
+    for (pkg, path) in devel_eggs(excludes).items():
 
         # this adds the buildout version tag to all eggs
         git_tag(path, release_tag, noact)
@@ -298,9 +301,9 @@ def buildtool_dist(versionsfile,
     git_push(BASEDIR, noact)
 
 
-def git_all(args, noact=False):
+def git_all(args, noact=False, excludes=[]):
     print("Inspecting devel eggs, hang on...")
-    for (pkg, path) in devel_eggs().items():
+    for (pkg, path) in devel_eggs(excludes).items():
         print("\n--- %s ---" % pkg)
         git_cmd(path, args, noact)
     print("\n====== %s ======" % BASEDIR)
@@ -330,6 +333,10 @@ def main(defaults={}):
         parser.set_defaults(distlocation=defaults['dist-location'])
     if 'build-name' in defaults:
         parser.set_defaults(buildname=defaults['build-name'])
+    if 'excludes' in defaults:
+        parser.set_defaults(excludes=defaults['excludes'])
+    else:
+        parser.set_defaults(excludes="")
     parser.add_option("-c", "--release-candidate",
                       action="store_false", dest="final", default=True,
                       help="Do not bump a final version, bump a RC instead.")
@@ -345,6 +352,9 @@ def main(defaults={}):
     parser.add_option("-b", "--build-name",
                       action="store", dest="buildname",
                       help="Name for this buildout.")
+    parser.add_option("-e", "--excludes",
+                      action="store", dest="excludes",
+                      help="Exclude eggs from buildtool (comma seperated list).")
     parser.add_option("-s", "--skip-checks",
                       action="store_true", dest="skipchecks",
                       help="Skip sanity checks.")
@@ -359,15 +369,17 @@ def main(defaults={}):
         return
 
     cmd = args[0]
+    excludes = [x for x in options.excludes.split(",") if len(x) > 0]
 
     if cmd == 'status':
-        buildtool_status()
+        buildtool_status(excludes)
 
     elif cmd == 'cook':
         buildtool_cook(options.final,
                        options.noact,
                        options.skipchecks,
-                       options.force)
+                       options.force,
+                       excludes)
 
     elif cmd == 'dist':
         if not options.versionsfile:
@@ -385,12 +397,13 @@ def main(defaults={}):
                        options.final,
                        options.noact,
                        options.skipchecks,
-                       options.force)
+                       options.force,
+                       excludes)
 
     elif cmd == 'git':
         gitargs = args[1:]
         if gitargs:
-            git_all(gitargs, options.noact)
+            git_all(gitargs, options.noact, excludes)
         else:
             print("'%s git log', or '%s git whatchanged', or ...?"
                   % (sys.argv[0], sys.argv[0]))
@@ -405,7 +418,7 @@ _usage = """
 %(script)s status
     List uncommitted changes in all working trees.
 
-%(script)s [-n] [-f] [-s] [-c] cook
+%(script)s [-n] [-f] [-s] [-c] [-e eggs] cook
     Bump version, commit and tag all eggs that have unreleased commits.
 
     [-n]          dry run, no changes
@@ -413,8 +426,10 @@ _usage = """
     [-s]          skip sanity check, accept uncommitted changes
     [-c]          create RC (0.1->0.2rc1) instead of final version (0.1->0.2)
 
+    [-e eggs]     exclude eggs from buildtool (comma seperated list)
 
-%(script)s [-n] [-f] [-s] [-c] <-v versions> <-d dist> [-b name] dist
+
+%(script)s [-n] [-f] [-s] [-c] <-v versions> <-d dist> [-b name] [-e eggs] dist
     Release and upload all changed eggs to distserver (via jarn.mkrelease).
     Update and commit buildout versionsfile to reflect the new egg versions.
     Tag the buildout and tag all eggs with the buildout version tag.
@@ -428,6 +443,7 @@ _usage = """
     <-v versions> path to buildout versions.txt file
     <-d dist>     pypirc dist location to use for uploading eggs
     [-b name]     build name, defaults to name of buildout directory
+    [-e eggs]     exclude eggs from buildtool (comma seperated list)
 
 %(script)s git <gitargs>
     Run 'git gitargs' on all development eggs, and on the buildout itself.
